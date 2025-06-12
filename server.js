@@ -4,17 +4,28 @@ import cookieParser from "cookie-parser";
 import dotenv from "dotenv";
 import path from "path";
 import { fileURLToPath } from "url";
+import { createServer } from "http";
+import { Server } from "socket.io";
+import { setupRoomSocket } from "./socket/roomSocket.js";
 
 dotenv.config();
 
 const app = express();
+const server = createServer(app);
+const io = new Server(server, {
+  cors: {
+    origin: "http://localhost:3000",
+    credentials: true,
+    methods: ["GET", "POST"],
+  },
+});
 
 import cors from "cors";
 
 app.use(
   cors({
     origin: "http://localhost:3000",
-    credentials: true, // penting untuk kirim cookie
+    credentials: true,
   })
 );
 
@@ -29,9 +40,9 @@ app.use(
     resave: false,
     saveUninitialized: false,
     cookie: {
-      secure: false, // Kalau di production + HTTPS, ubah ke true
+      secure: false,
       httpOnly: true,
-      maxAge: 1000 * 60 * 60 * 24 * 7, // 7 hari
+      maxAge: 1000 * 60 * 60 * 24 * 7,
     },
   })
 );
@@ -49,9 +60,15 @@ app.use("/api/study", studyRoutes);
 import friendRoutes from "./routes/friend.js";
 app.use("/api/friends", friendRoutes);
 
+import roomRoutes from "./routes/room.js";
+app.use("/api/rooms", roomRoutes);
+
+// Setup Socket.IO
+setupRoomSocket(io);
+
 // Server listen
 const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => {
+server.listen(PORT, () => {
   console.log(`Server berjalan di http://localhost:${PORT}`);
 });
 
