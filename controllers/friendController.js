@@ -1,5 +1,6 @@
 import db from "../config/db.js";
 const base_url = process.env.BASE_URL;
+
 // Get current user data (yang sudah ada - diperbaiki)
 export const getUser = async (req, res) => {
   try {
@@ -41,7 +42,7 @@ export const searchUsers = async (req, res) => {
         u.name, 
         u.email, 
         u.learning_style,
-        CONCAT(?, '/uploads/avatars/', u.profile_picture) AS profile_picture,
+        u.profile_picture,
         u.created_at,
         CASE 
           WHEN f.status = '1' THEN 'friend'
@@ -60,7 +61,6 @@ export const searchUsers = async (req, res) => {
       LIMIT 20
     `,
       [
-        base_url,
         currentUserId,
         currentUserId,
         currentUserId,
@@ -70,8 +70,16 @@ export const searchUsers = async (req, res) => {
       ]
     );
 
+    // Map profile pictures consistently
+    const users = rows.map((row) => ({
+      ...row,
+      profile_picture: row.profile_picture
+        ? `${base_url}/uploads/avatars/${row.profile_picture}`
+        : null,
+    }));
+
     res.json({
-      users: rows,
+      users: users,
       query: query,
     });
   } catch (err) {
@@ -105,7 +113,7 @@ export const getRecommendedFriends = async (req, res) => {
         u.name, 
         u.email, 
         u.learning_style,
-        CONCAT(?, '/uploads/avatars/', u.profile_picture) AS profile_picture,
+        u.profile_picture,
         u.created_at,
         CASE 
           WHEN f.status = '1' THEN 'friend'
@@ -125,7 +133,6 @@ export const getRecommendedFriends = async (req, res) => {
       LIMIT 10
     `,
       [
-        base_url,
         currentUserId,
         currentUserId,
         currentUserId,
@@ -135,8 +142,16 @@ export const getRecommendedFriends = async (req, res) => {
       ]
     );
 
+    // Map profile pictures consistently
+    const recommendations = rows.map((row) => ({
+      ...row,
+      profile_picture: row.profile_picture
+        ? `${base_url}/uploads/avatars/${row.profile_picture}`
+        : null,
+    }));
+
     res.json({
-      recommendations: rows,
+      recommendations: recommendations,
       learning_style: userLearningStyle,
     });
   } catch (err) {
@@ -158,7 +173,7 @@ export const getFriends = async (req, res) => {
         u.id,
         u.name,
         u.email,
-        CONCAT(?, '/uploads/avatars/', u.profile_picture) AS profile_picture,
+        u.profile_picture,
         u.learning_style,
         f.created_at as friend_since,
         '1' as status,
@@ -183,10 +198,18 @@ export const getFriends = async (req, res) => {
       AND u.id != ?
       ORDER BY is_currently_studying DESC, u.name ASC
     `,
-      [base_url, currentUserId, currentUserId, currentUserId]
+      [currentUserId, currentUserId, currentUserId]
     );
 
-    res.json({ friends: rows });
+    // Map profile pictures consistently
+    const friends = rows.map((row) => ({
+      ...row,
+      profile_picture: row.profile_picture
+        ? `${base_url}/uploads/avatars/${row.profile_picture}`
+        : null,
+    }));
+
+    res.json({ friends: friends });
   } catch (err) {
     console.error("Error getting friends:", err);
     res.status(500).json({ message: "Server error" });
@@ -204,7 +227,7 @@ export const getFriendRequests = async (req, res) => {
         u.id,
         u.name,
         u.email,
-        CONCAT(?, '/uploads/avatars/', u.profile_picture) AS profile_picture,
+        u.profile_picture,
         u.learning_style,
         f.id as request_id,
         f.created_at as requested_at,
@@ -215,24 +238,25 @@ export const getFriendRequests = async (req, res) => {
       AND f.status = '0'
       ORDER BY f.created_at DESC
     `,
-      [base_url, currentUserId]
+      [currentUserId]
     );
 
+    // Map profile pictures consistently - FIX: Remove double mapping
     const requests = rows.map((row) => ({
       ...row,
       profile_picture: row.profile_picture
-        ? `${process.env.BASE_URL}/uploads/avatars/${row.profile_picture}`
+        ? `${base_url}/uploads/avatars/${row.profile_picture}`
         : null,
     }));
 
-    res.json({ requests });
+    res.json({ requests: requests });
   } catch (err) {
     console.error("Error getting friend requests:", err);
     res.status(500).json({ message: "Server error" });
   }
 };
 
-// ✅ NEW: Get sent friend requests (yang kita kirim ke orang lain)
+// ✅ FIXED: Get sent friend requests (yang kita kirim ke orang lain)
 export const getSentFriendRequests = async (req, res) => {
   try {
     const currentUserId = req.user.id;
@@ -257,14 +281,16 @@ export const getSentFriendRequests = async (req, res) => {
       [currentUserId]
     );
 
-    const sent_request = rows.map((row) => ({
+    // Map profile pictures consistently - FIX: Correct response key
+    const sent_requests = rows.map((row) => ({
       ...row,
       profile_picture: row.profile_picture
-        ? `${process.env.BASE_URL}/uploads/avatars/${row.profile_picture}`
+        ? `${base_url}/uploads/avatars/${row.profile_picture}`
         : null,
     }));
 
-    res.json({ sent_request });
+    // FIX: Use correct response key that matches frontend expectation
+    res.json({ sent_requests: sent_requests });
   } catch (err) {
     console.error("Error getting sent friend requests:", err);
     res.status(500).json({ message: "Server error" });
@@ -547,9 +573,17 @@ export const getFriendDetail = async (req, res) => {
     const friend = friendData[0];
     const stats = studyStats[0];
 
+    // Map profile picture consistently
+    const friendWithProfilePicture = {
+      ...friend,
+      profile_picture: friend.profile_picture
+        ? `${base_url}/uploads/avatars/${friend.profile_picture}`
+        : null,
+    };
+
     res.json({
       friend: {
-        ...friend,
+        ...friendWithProfilePicture,
         study_stats: {
           total_sessions: stats.total_sessions || 0,
           total_study_hours:
