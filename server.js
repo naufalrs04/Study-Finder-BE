@@ -8,6 +8,8 @@ import { createServer } from "http";
 import { Server } from "socket.io";
 import { setupRoomSocket } from "./socket/roomSocket.js";
 
+// Import ML Controller
+
 dotenv.config();
 
 const app = express();
@@ -63,14 +65,27 @@ app.use("/api/friends", friendRoutes);
 import roomRoutes from "./routes/room.js";
 app.use("/api/rooms", roomRoutes);
 
+// ML Routes
+import mlRoutes from "./routes/ml.js";
+app.use("/api/ml", mlRoutes);
+
 // Setup Socket.IO
 setupRoomSocket(io);
 
-// Server listen
-const PORT = process.env.PORT || 5000;
-server.listen(PORT, () => {
-  console.log(`Server berjalan di http://localhost:${PORT}`);
-});
+// Load ML models before starting server ✅
+const startServer = async () => {
+  try {
+    const PORT = process.env.PORT || 5000;
+    server.listen(PORT, () => {
+      console.log(`✅ Server berjalan di http://localhost:${PORT}`);
+    });
+  } catch (error) {
+    console.error("❌ Gagal memulai server:", error.message);
+    process.exit(1);
+  }
+};
+
+startServer(); // ✅ Jalankan server setelah model dimuat
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
