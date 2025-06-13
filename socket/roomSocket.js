@@ -1,5 +1,3 @@
-// Updated roomSocket.js - mengirim duration dalam format HH:MM:SS
-
 import jwt from "jsonwebtoken";
 import db from "../config/db.js";
 
@@ -24,6 +22,8 @@ function formatDuration(startedAt) {
 export const setupRoomSocket = (io) => {
   // Store online users per room
   const roomUsers = new Map();
+  // ✅ Track user connections to prevent duplicates
+  const userConnections = new Map();
 
   // Middleware untuk socket authentication
   io.use(async (socket, next) => {
@@ -46,6 +46,22 @@ export const setupRoomSocket = (io) => {
       }
 
       socket.user = user[0];
+
+      // ✅ Check for existing connections
+      const existingSocketId = userConnections.get(socket.user.id);
+      if (existingSocketId) {
+        console.log(
+          `⚠️ User ${socket.user.name} already connected, disconnecting old connection`
+        );
+        const existingSocket = io.sockets.sockets.get(existingSocketId);
+        if (existingSocket) {
+          existingSocket.disconnect(true);
+        }
+      }
+
+      // ✅ Store new connection
+      userConnections.set(socket.user.id, socket.id);
+
       next();
     } catch (error) {
       next(new Error("Invalid token"));
@@ -53,10 +69,15 @@ export const setupRoomSocket = (io) => {
   });
 
   io.on("connection", async (socket) => {
-    console.log(`User connected: ${socket.user.name} (${socket.user.id})`);
+    console.log(`✅ User connected: ${socket.user.name} (${socket.user.id})`);
+
+    // ✅ Add rate limiting for auto-rejoin
+    let autoRejoinAttempted = false;
 
     // Auto-rejoin user to their active room if exists
-    if (socket.user.active_room_id) {
+    if (socket.user.active_room_id && !autoRejoinAttempted) {
+      autoRejoinAttempted = true;
+
       try {
         // Verify room still exists and not closed
         const [room] = await db.execute(
@@ -76,37 +97,42 @@ export const setupRoomSocket = (io) => {
           }
           roomUsers.get(roomId).add(socket.user.id);
 
-          console.log(`User ${socket.user.name} auto-rejoined room ${roomId}`);
+          console.log(
+            `👤 User ${socket.user.name} auto-rejoined room ${roomId}`
+          );
 
           // Calculate current duration from started_at
-          const currentDuration = formatDuration(room[0].started_at);
+          const currentDuration = formatDuration(room[0].created_at);
 
-          // Send room data to user with current duration
-          socket.emit("joined_room", {
-            roomId: roomId,
-            roomName: room[0].name,
-            roomDescription: room[0].description,
-            roomCode: room[0].code,
-            createdBy: room[0].created_by,
-            startedAt: room[0].started_at,
-            duration: currentDuration, // Send calculated duration
-            message: "Melanjutkan sesi room",
-          });
+          // ✅ Add delay to prevent rapid fire events
+          setTimeout(() => {
+            // Send room data to user with current duration
+            socket.emit("joined_room", {
+              roomId: roomId,
+              roomName: room[0].name,
+              roomDescription: room[0].description,
+              roomCode: room[0].code,
+              createdBy: room[0].created_by,
+              startedAt: room[0].created_at,
+              duration: currentDuration,
+              message: "Melanjutkan sesi room",
+            });
 
-          // Send current room members
-          await sendRoomMembers(socket, roomId);
+            // Send current room members
+            sendRoomMembers(socket, roomId);
 
-          // Notify others in room
-          socket.to(`room_${roomId}`).emit("user_rejoined", {
-            userId: socket.user.id,
-            userName: socket.user.name,
-            userAvatar: socket.user.profile_picture,
-            timestamp: new Date(),
-          });
+            // Notify others in room (throttled)
+            socket.to(`room_${roomId}`).emit("user_rejoined", {
+              userId: socket.user.id,
+              userName: socket.user.name,
+              userAvatar: socket.user.profile_picture,
+              timestamp: new Date(),
+            });
 
-          // Send online users list
-          const onlineUserIds = Array.from(roomUsers.get(roomId) || []);
-          io.to(`room_${roomId}`).emit("online_users_updated", onlineUserIds);
+            // Send online users list
+            const onlineUserIds = Array.from(roomUsers.get(roomId) || []);
+            io.to(`room_${roomId}`).emit("online_users_updated", onlineUserIds);
+          }, 100); // Small delay to prevent rapid events
         } else {
           // Room doesn't exist or closed, clear user's active room
           await db.execute(
@@ -119,8 +145,17 @@ export const setupRoomSocket = (io) => {
       }
     }
 
-    // Join room
+    // ✅ Throttle join_room events
+    let lastJoinAttempt = 0;
     socket.on("join_room", async (data) => {
+      const now = Date.now();
+      if (now - lastJoinAttempt < 1000) {
+        // 1 second throttle
+        console.log(`⚠️ Join room throttled for user ${socket.user.name}`);
+        return;
+      }
+      lastJoinAttempt = now;
+
       const { roomId } = data;
 
       try {
@@ -152,37 +187,40 @@ export const setupRoomSocket = (io) => {
         }
         roomUsers.get(roomId).add(socket.user.id);
 
-        console.log(`User ${socket.user.name} joined room ${roomId}`);
+        console.log(`👤 User ${socket.user.name} joined room ${roomId}`);
 
-        // Broadcast to room that user joined
-        socket.to(`room_${roomId}`).emit("user_joined", {
-          userId: socket.user.id,
-          userName: socket.user.name,
-          userAvatar: socket.user.profile_picture,
-          timestamp: new Date(),
-        });
+        // ✅ Add small delay to prevent rapid events
+        setTimeout(() => {
+          // Broadcast to room that user joined
+          socket.to(`room_${roomId}`).emit("user_joined", {
+            userId: socket.user.id,
+            userName: socket.user.name,
+            userAvatar: socket.user.profile_picture,
+            timestamp: new Date(),
+          });
 
-        // Calculate current duration from started_at
-        const currentDuration = formatDuration(room[0].started_at);
+          // Calculate current duration from started_at
+          const currentDuration = formatDuration(room[0].created_at);
 
-        // Send confirmation to user with current duration
-        socket.emit("joined_room", {
-          roomId: roomId,
-          roomName: room[0].name,
-          roomDescription: room[0].description,
-          roomCode: room[0].code,
-          createdBy: room[0].created_by,
-          startedAt: room[0].started_at,
-          duration: currentDuration, // Send calculated duration
-          message: "Berhasil bergabung dengan room",
-        });
+          // Send confirmation to user with current duration
+          socket.emit("joined_room", {
+            roomId: roomId,
+            roomName: room[0].name,
+            roomDescription: room[0].description,
+            roomCode: room[0].code,
+            createdBy: room[0].created_by,
+            startedAt: room[0].created_at,
+            duration: currentDuration,
+            message: "Berhasil bergabung dengan room",
+          });
 
-        // Send current room members
-        await sendRoomMembers(socket, roomId);
+          // Send current room members
+          sendRoomMembers(socket, roomId);
 
-        // Send online users list
-        const onlineUserIds = Array.from(roomUsers.get(roomId) || []);
-        io.to(`room_${roomId}`).emit("online_users_updated", onlineUserIds);
+          // Send online users list
+          const onlineUserIds = Array.from(roomUsers.get(roomId) || []);
+          io.to(`room_${roomId}`).emit("online_users_updated", onlineUserIds);
+        }, 100);
       } catch (error) {
         console.error("Error joining room:", error);
         socket.emit("error", { message: "Gagal bergabung dengan room" });
@@ -233,15 +271,23 @@ export const setupRoomSocket = (io) => {
         // Remove room from tracking
         roomUsers.delete(roomId);
 
-        console.log(`Room ${roomId} closed by ${socket.user.name}`);
+        console.log(`🚪 Room ${roomId} closed by ${socket.user.name}`);
       } catch (error) {
         console.error("Error closing room:", error);
         socket.emit("error", { message: "Gagal menutup room" });
       }
     });
 
-    // Send chat message
+    // ✅ Throttle message sending
+    let lastMessageTime = 0;
     socket.on("send_message", async (data) => {
+      const now = Date.now();
+      if (now - lastMessageTime < 100) {
+        // 100ms throttle
+        return;
+      }
+      lastMessageTime = now;
+
       const { roomId, message } = data;
 
       if (!socket.currentRoomId || socket.currentRoomId != roomId) {
@@ -293,7 +339,7 @@ export const setupRoomSocket = (io) => {
 
         if (room.length > 0) {
           const roomData = room[0];
-          const currentDuration = formatDuration(roomData.started_at);
+          const currentDuration = formatDuration(roomData.created_at);
 
           socket.emit("room_info_updated", {
             roomId: roomData.id,
@@ -302,8 +348,8 @@ export const setupRoomSocket = (io) => {
             roomCode: roomData.code,
             createdBy: roomData.created_by,
             creatorName: roomData.creator_name,
-            startedAt: roomData.started_at,
-            duration: currentDuration, // Send calculated duration
+            startedAt: roomData.created_at,
+            duration: currentDuration,
             isPrivate: roomData.is_private === 1,
           });
         }
@@ -313,8 +359,13 @@ export const setupRoomSocket = (io) => {
     });
 
     // Handle disconnect
-    socket.on("disconnect", async () => {
-      console.log(`User disconnected: ${socket.user.name} (${socket.user.id})`);
+    socket.on("disconnect", async (reason) => {
+      console.log(
+        `❌ User disconnected: ${socket.user.name} (${socket.user.id}) - Reason: ${reason}`
+      );
+
+      // ✅ Clean up user connection tracking
+      userConnections.delete(socket.user.id);
 
       if (socket.currentRoomId) {
         // Remove user from room tracking
@@ -336,30 +387,35 @@ export const setupRoomSocket = (io) => {
           timestamp: new Date(),
         });
 
-        // Check if user was the last one in the room after disconnect
-        try {
-          const [remainingMembers] = await db.execute(
-            "SELECT COUNT(*) as member_count FROM users WHERE active_room_id = ?",
-            [socket.currentRoomId]
-          );
-
-          // If no members left in the database, auto-close the room
-          if (remainingMembers[0].member_count === 0) {
-            await db.execute(
-              "UPDATE rooms SET closed_at = NOW() WHERE id = ?",
+        // ✅ Add delay for room cleanup check
+        setTimeout(async () => {
+          try {
+            const [remainingMembers] = await db.execute(
+              "SELECT COUNT(*) as member_count FROM users WHERE active_room_id = ?",
               [socket.currentRoomId]
             );
 
-            // Remove room from tracking
-            roomUsers.delete(socket.currentRoomId);
+            // If no members left in the database, auto-close the room
+            if (remainingMembers[0].member_count === 0) {
+              await db.execute(
+                "UPDATE rooms SET closed_at = NOW() WHERE id = ?",
+                [socket.currentRoomId]
+              );
 
-            console.log(
-              `Room ${socket.currentRoomId} auto-closed due to no remaining members after disconnect`
+              // Remove room from tracking
+              roomUsers.delete(socket.currentRoomId);
+
+              console.log(
+                `🚪 Room ${socket.currentRoomId} auto-closed due to no remaining members after disconnect`
+              );
+            }
+          } catch (error) {
+            console.error(
+              "Error checking room members after disconnect:",
+              error
             );
           }
-        } catch (error) {
-          console.error("Error checking room members after disconnect:", error);
-        }
+        }, 2000); // 2 second delay
       }
     });
 
@@ -387,39 +443,41 @@ export const setupRoomSocket = (io) => {
         // Send updated member count to room
         await sendRoomMembers(socket, roomId, true);
 
-        // Check if room should be auto-closed after user leaves
-        try {
-          const [remainingMembers] = await db.execute(
-            "SELECT COUNT(*) as member_count FROM users WHERE active_room_id = ?",
-            [roomId]
-          );
-
-          // If no members left, auto-close the room
-          if (remainingMembers[0].member_count === 0) {
-            await db.execute(
-              "UPDATE rooms SET closed_at = NOW() WHERE id = ?",
+        // ✅ Add delay for room cleanup
+        setTimeout(async () => {
+          try {
+            const [remainingMembers] = await db.execute(
+              "SELECT COUNT(*) as member_count FROM users WHERE active_room_id = ?",
               [roomId]
             );
 
-            // Notify any remaining socket connections (edge case)
-            io.to(`room_${roomId}`).emit("room_auto_closed", {
-              message: "Room ditutup otomatis karena tidak ada anggota",
-              timestamp: new Date(),
-            });
+            // If no members left, auto-close the room
+            if (remainingMembers[0].member_count === 0) {
+              await db.execute(
+                "UPDATE rooms SET closed_at = NOW() WHERE id = ?",
+                [roomId]
+              );
 
-            // Remove room from tracking
-            roomUsers.delete(roomId);
+              // Notify any remaining socket connections (edge case)
+              io.to(`room_${roomId}`).emit("room_auto_closed", {
+                message: "Room ditutup otomatis karena tidak ada anggota",
+                timestamp: new Date(),
+              });
 
-            console.log(
-              `Room ${roomId} auto-closed due to no remaining members`
-            );
+              // Remove room from tracking
+              roomUsers.delete(roomId);
+
+              console.log(
+                `🚪 Room ${roomId} auto-closed due to no remaining members`
+              );
+            }
+          } catch (error) {
+            console.error("Error checking room members after leave:", error);
           }
-        } catch (error) {
-          console.error("Error checking room members after leave:", error);
-        }
+        }, 1000); // 1 second delay
 
         socket.leave(`room_${roomId}`);
-        console.log(`User ${socket.user.name} left room ${roomId}`);
+        console.log(`👋 User ${socket.user.name} left room ${roomId}`);
         socket.currentRoomId = null;
       }
     }

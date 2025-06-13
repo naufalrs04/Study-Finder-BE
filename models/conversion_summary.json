@@ -1,0 +1,46 @@
+{
+  "conversion_summary": {
+    "total_models": 2,
+    "successful_conversions": 2,
+    "converted_at": "2025-06-12T15:24:15.613663",
+    "tensorflow_version": "2.18.0",
+    "tensorflowjs_version": "4.22.0"
+  },
+  "models": [
+    {
+      "original_file": "model_nlp.h5",
+      "model_name": "model_nlp",
+      "converted_at": "2025-06-12T15:24:15.542567",
+      "tensorflow_version": "2.18.0",
+      "tensorflowjs_version": "4.22.0",
+      "input_shape": "(None, 30)",
+      "output_shape": "(None, 3)",
+      "total_parameters": 81283,
+      "files_generated": [
+        "model.json",
+        "group1-shard1of1.bin"
+      ],
+      "total_size_bytes": 328758
+    },
+    {
+      "original_file": "model_pilgan.h5",
+      "model_name": "model_pilgan",
+      "converted_at": "2025-06-12T15:24:15.613515",
+      "tensorflow_version": "2.18.0",
+      "tensorflowjs_version": "4.22.0",
+      "input_shape": "(None, 12)",
+      "output_shape": "(None, 3)",
+      "total_parameters": 3011,
+      "files_generated": [
+        "model.json",
+        "group1-shard1of1.bin"
+      ],
+      "total_size_bytes": 15541
+    }
+  ],
+  "express_js_usage": {
+    "install": "npm install @tensorflow/tfjs-node",
+    "load_example": "const model = await tf.loadLayersModel('file://./models/MODEL_NAME/model.json');",
+    "note": "Copy the entire model folders to your Express.js project"
+  }
+}

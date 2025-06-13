@@ -6,6 +6,11 @@ import { authenticate } from "../middleware/authMiddleware.js";
 import {
   updateLearningStyle,
   getUserProfile,
+  getUserFriends,
+  getStudyStats,
+  getActiveSession,
+  startStudySession,
+  endStudySession,
   updateUserProfile,
   updatePassword,
   uploadAvatar,
@@ -81,8 +86,19 @@ const handleUpload = (req, res, next) => {
 router.get("/profile", authenticate, getUserProfile);
 router.put("/profile", authenticate, updateUserProfile);
 router.put("/password", authenticate, updatePassword);
-router.post("/avatar", authenticate, handleUpload, uploadAvatar); // Updated with error handling
+router.post("/avatar", authenticate, handleUpload, uploadAvatar);
 router.delete("/avatar", authenticate, deleteAvatar);
 router.put("/learning-style", authenticate, updateLearningStyle);
+
+// Friends Routes
+router.get("/friends", authenticate, getUserFriends);
+
+// Study Stats Routes
+router.get("/study-stats", authenticate, getStudyStats);
+
+// Study Session Routes
+router.get("/active-session", authenticate, getActiveSession);
+router.post("/start-session", authenticate, startStudySession);
+router.post("/end-session", authenticate, endStudySession);
 
 export default router;
