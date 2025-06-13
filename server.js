@@ -16,7 +16,7 @@ const app = express();
 const server = createServer(app);
 const io = new Server(server, {
   cors: {
-    origin: "http://localhost:3000",
+    origin: "https://study-finder-self.vercel.app",
     credentials: true,
     methods: ["GET", "POST"],
   },
@@ -26,7 +26,7 @@ import cors from "cors";
 
 app.use(
   cors({
-    origin: "http://localhost:3000",
+    origin: "https://study-finder-self.vercel.app",
     credentials: true,
   })
 );
