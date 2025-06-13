@@ -144,7 +144,7 @@ export const getUserProfile = async (req, res) => {
       // Remove /api if present in base URL for file serving
       const cleanBaseUrl = baseUrl.replace("/api", "");
 
-      return `${cleanBaseUrl}/public/uploads/avatars/${filename}`;
+      return `${cleanBaseUrl}/uploads/avatars/${filename}`;
     };
 
     // Build response matching frontend expectations
