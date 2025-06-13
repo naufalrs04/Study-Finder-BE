@@ -1,5 +1,5 @@
 import db from "../config/db.js";
-
+const base_url = process.env.BASE_URL;
 // Get current user data (yang sudah ada - diperbaiki)
 export const getUser = async (req, res) => {
   try {
@@ -41,7 +41,7 @@ export const searchUsers = async (req, res) => {
         u.name, 
         u.email, 
         u.learning_style,
-        u.profile_picture,
+        CONCAT(?, '/uploads/avatars/', u.profile_picture) AS profile_picture,
         u.created_at,
         CASE 
           WHEN f.status = '1' THEN 'friend'
@@ -60,6 +60,7 @@ export const searchUsers = async (req, res) => {
       LIMIT 20
     `,
       [
+        base_url,
         currentUserId,
         currentUserId,
         currentUserId,
@@ -104,7 +105,7 @@ export const getRecommendedFriends = async (req, res) => {
         u.name, 
         u.email, 
         u.learning_style,
-        u.profile_picture,
+        CONCAT(?, '/uploads/avatars/', u.profile_picture) AS profile_picture,
         u.created_at,
         CASE 
           WHEN f.status = '1' THEN 'friend'
@@ -124,6 +125,7 @@ export const getRecommendedFriends = async (req, res) => {
       LIMIT 10
     `,
       [
+        base_url,
         currentUserId,
         currentUserId,
         currentUserId,
@@ -156,7 +158,7 @@ export const getFriends = async (req, res) => {
         u.id,
         u.name,
         u.email,
-        u.profile_picture,
+        CONCAT(?, '/uploads/avatars/', u.profile_picture) AS profile_picture,
         u.learning_style,
         f.created_at as friend_since,
         '1' as status,
@@ -181,7 +183,7 @@ export const getFriends = async (req, res) => {
       AND u.id != ?
       ORDER BY is_currently_studying DESC, u.name ASC
     `,
-      [currentUserId, currentUserId, currentUserId]
+      [base_url, currentUserId, currentUserId, currentUserId]
     );
 
     res.json({ friends: rows });
@@ -202,7 +204,7 @@ export const getFriendRequests = async (req, res) => {
         u.id,
         u.name,
         u.email,
-        u.profile_picture,
+        CONCAT(?, '/uploads/avatars/', u.profile_picture) AS profile_picture,
         u.learning_style,
         f.id as request_id,
         f.created_at as requested_at,
@@ -213,10 +215,17 @@ export const getFriendRequests = async (req, res) => {
       AND f.status = '0'
       ORDER BY f.created_at DESC
     `,
-      [currentUserId]
+      [base_url, currentUserId]
     );
 
-    res.json({ requests: rows });
+    const requests = rows.map((row) => ({
+      ...row,
+      profile_picture: row.profile_picture
+        ? `${process.env.BASE_URL}/uploads/avatars/${row.profile_picture}`
+        : null,
+    }));
+
+    res.json({ requests });
   } catch (err) {
     console.error("Error getting friend requests:", err);
     res.status(500).json({ message: "Server error" });
@@ -248,7 +257,14 @@ export const getSentFriendRequests = async (req, res) => {
       [currentUserId]
     );
 
-    res.json({ sent_requests: rows });
+    const sent_request = rows.map((row) => ({
+      ...row,
+      profile_picture: row.profile_picture
+        ? `${process.env.BASE_URL}/uploads/avatars/${row.profile_picture}`
+        : null,
+    }));
+
+    res.json({ sent_request });
   } catch (err) {
     console.error("Error getting sent friend requests:", err);
     res.status(500).json({ message: "Server error" });
